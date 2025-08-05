@@ -1,4 +1,3 @@
-// /client/src/lib/api/admin.ts
 import apiClient from './client';
 
 export interface AdminDashboardStats {
@@ -62,7 +61,7 @@ export interface PaginationInfo {
 export const adminAPI = {
   // Get dashboard statistics
   getDashboardStats: async (): Promise<{ status: string; data: AdminDashboardStats }> => {
-    const response = await apiClient.get('/api/admin/dashboard/stats');
+    const response = await apiClient.get('/admin/dashboard/stats');  // No `/api` here since it's included in the baseURL
     return response.data;
   },
 
@@ -75,16 +74,16 @@ export const adminAPI = {
     limit?: number;
     search?: string;
   }): Promise<{ status: string; data: { cases: AdminCase[]; pagination: PaginationInfo } }> => {
-    const response = await apiClient.get('/api/admin/cases', { params });
+    const response = await apiClient.get('/admin/cases', { params });
     return response.data;
   },
 
   // Update case status as admin
   updateCaseStatus: async (
-    caseId: string, 
+    caseId: string,
     data: { status: string; notes?: string; adminAction?: string }
   ): Promise<{ status: string; data: { case: AdminCase }; message: string }> => {
-    const response = await apiClient.put(`/api/admin/cases/${caseId}/status`, data);
+    const response = await apiClient.put(`/admin/cases/${caseId}/status`, data);  // No `/api` here
     return response.data;
   },
 
@@ -95,7 +94,7 @@ export const adminAPI = {
     limit?: number;
     search?: string;
   }): Promise<{ status: string; data: { users: AdminUser[]; pagination: PaginationInfo } }> => {
-    const response = await apiClient.get('/api/admin/users', { params });
+    const response = await apiClient.get('/admin/users', { params });  // No `/api` here
     return response.data;
   }
 };

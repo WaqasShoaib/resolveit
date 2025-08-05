@@ -1,12 +1,14 @@
 import express from 'express';
 import authRoutes from './authRoutes';
 import caseRoutes from './caseRoutes';
+import adminRoutes from './adminRoutes'; // Add this import
 
 const router = express.Router();
 
 // API Routes
 router.use('/auth', authRoutes);
 router.use('/cases', caseRoutes);
+router.use('/admin', adminRoutes); // Add this line
 
 // API Info route
 router.get('/', (req, res) => {
@@ -29,6 +31,12 @@ router.get('/', (req, res) => {
         updateStatus: 'PUT /api/cases/:id/status',
         addDocument: 'POST /api/cases/:id/documents',
         statistics: 'GET /api/cases/statistics (admin only)'
+      },
+      admin: { // Add admin endpoints documentation
+        dashboardStats: 'GET /api/admin/dashboard/stats',
+        getAllCases: 'GET /api/admin/cases',
+        updateCaseStatus: 'PUT /api/admin/cases/:caseId/status',
+        getAllUsers: 'GET /api/admin/users'
       }
     },
     documentation: 'See Postman collection for API testing'

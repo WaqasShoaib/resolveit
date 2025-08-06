@@ -9,8 +9,8 @@ import {
    getCaseStatistics
 } from '../controllers/caseController';
 import { authenticate, authorize } from '../middleware/auth';
-import { validate } from '../middleware/validation';
-import { uploadCaseEvidence, uploadSingle } from '../middleware/upload';
+import { validate, validateFormData } from '../middleware/validation';
+import { uploadCaseEvidence } from '../middleware/upload';
 import { caseRegistrationSchema, caseUpdateSchema } from '../utils/validation';
 
 const router = express.Router();
@@ -22,7 +22,7 @@ router.use(authenticate);
 router.post(
   '/',
   uploadCaseEvidence,
-  validate(caseRegistrationSchema),
+  validateFormData(caseRegistrationSchema),
   createCase
 );
 
@@ -30,7 +30,7 @@ router.get('/', getUserCases);
 router.get('/statistics', authorize('admin'), getCaseStatistics);
 router.get('/:caseId', getCaseById);
 
-// Update case details
+// Update case details - Keep regular validation for JSON data
 router.put(
   '/:caseId',
   validate(caseUpdateSchema),
@@ -39,7 +39,7 @@ router.put(
 
 router.put('/:caseId/status', updateCaseStatus);
 
-// UPDATED: Changed from uploadSingle to uploadCaseEvidence for multiple files
+// Document upload - No schema validation needed, just file validation
 router.post('/:caseId/documents', uploadCaseEvidence, addDocumentToCase);
 
 export default router;

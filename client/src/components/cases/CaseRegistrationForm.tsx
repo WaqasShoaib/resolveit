@@ -112,7 +112,7 @@ const CaseRegistrationForm: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+ const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -123,12 +123,42 @@ const CaseRegistrationForm: React.FC = () => {
     setSubmitError('');
 
     try {
+      // Add detailed logging
+      console.log('=== CASE SUBMISSION DEBUG ===');
+      console.log('Form data being sent:', formData);
+      console.log('Files being sent:', files);
+      
+      // Log FormData contents (for debugging)
+      if (files) {
+        console.log('Files details:');
+        for (let i = 0; i < files.length; i++) {
+          console.log(`File ${i}:`, {
+            name: files[i].name,
+            type: files[i].type,
+            size: files[i].size
+          });
+        }
+      }
+      
       const response = await casesAPI.createCase(formData, files || undefined);
+      
+      console.log('✅ Case created successfully:', response);
       
       // Success - redirect to cases list or show success message
       router.push('/dashboard/cases');
     } catch (error: any) {
-      console.error('Case registration error:', error);
+      console.error('❌ Case registration error:', error);
+      
+      // More detailed error logging
+      if (error.response) {
+        console.error('❌ Error response status:', error.response.status);
+        console.error('❌ Error response data:', error.response.data);
+        console.error('❌ Error response headers:', error.response.headers);
+      } else if (error.request) {
+        console.error('❌ Error request:', error.request);
+      } else {
+        console.error('❌ Error message:', error.message);
+      }
       
       if (error.response?.data?.errors) {
         const apiErrors: any = {};
@@ -137,7 +167,7 @@ const CaseRegistrationForm: React.FC = () => {
         });
         setErrors(apiErrors);
       } else {
-        setSubmitError(error.response?.data?.message || 'Failed to register case');
+        setSubmitError(error.response?.data?.message || error.message || 'Failed to register case');
       }
     } finally {
       setIsLoading(false);

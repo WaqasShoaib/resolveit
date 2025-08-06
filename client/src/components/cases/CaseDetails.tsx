@@ -84,6 +84,7 @@ const CaseDetails: React.FC = () => {
     }
   };
 
+
   const getStatusBadge = (status: string) => {
     const baseClasses = "inline-flex items-center px-3 py-1 rounded-full text-sm font-medium";
     const statusClasses: { [key: string]: string } = {
@@ -481,7 +482,7 @@ const CaseDetails: React.FC = () => {
             </button>
             
             <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-              {user?.id === caseData.complainant._id && (
+              {(user as any)?._id === caseData.complainant._id && (
                 <>
                   <button 
                     onClick={() => router.push(`/dashboard/cases/${caseId}/documents`)}

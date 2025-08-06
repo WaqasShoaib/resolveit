@@ -25,6 +25,9 @@ export interface CreateCaseData {
   notes: string;
 }
 
+// Add this type alias for backward compatibility
+export type CaseData = CreateCaseData;
+
 export interface CaseDocument {
   fileName: string;
   originalName: string;
@@ -126,17 +129,45 @@ export const casesAPI = {
     return response.data;
   },
 
-  // Create new case with file upload
+  // Create new case with file upload - FIXED VERSION
   createCase: async (caseData: CreateCaseData, files?: FileList): Promise<CaseResponse> => {
     const formData = new FormData();
     
-    // Add case data
-    formData.append('caseData', JSON.stringify(caseData));
+    // Append basic fields
+    formData.append('title', caseData.title);
+    formData.append('description', caseData.description);
+    formData.append('caseType', caseData.caseType);
+    formData.append('isInCourt', String(caseData.isInCourt));
+    formData.append('priority', caseData.priority);
+    formData.append('notes', caseData.notes || '');
     
-    // Add files if provided
+    // Append opposite party fields - FIXED STRUCTURE
+    formData.append('oppositeParty[name]', caseData.oppositeParty.name);
+    formData.append('oppositeParty[email]', caseData.oppositeParty.email || '');
+    formData.append('oppositeParty[phone]', caseData.oppositeParty.phone || '');
+    
+    if (caseData.oppositeParty.address) {
+      formData.append('oppositeParty[address][street]', caseData.oppositeParty.address.street || '');
+      formData.append('oppositeParty[address][city]', caseData.oppositeParty.address.city || '');
+      formData.append('oppositeParty[address][zipCode]', caseData.oppositeParty.address.zipCode || '');
+    }
+    
+    // FIXED: Append court details as nested object fields
+    if (caseData.isInCourt && caseData.courtDetails) {
+      formData.append('courtDetails[caseNumber]', caseData.courtDetails.caseNumber || '');
+      formData.append('courtDetails[courtName]', caseData.courtDetails.courtName || '');
+      formData.append('courtDetails[firNumber]', caseData.courtDetails.firNumber || '');
+      formData.append('courtDetails[policeStation]', caseData.courtDetails.policeStation || '');
+    }
+    
+    // Add files with proper field names
     if (files) {
       for (let i = 0; i < files.length; i++) {
-        formData.append('documents', files[i]);
+        const fileType = files[i].type.split('/')[0];
+        const fieldName = fileType === 'image' ? 'images' : 
+                         fileType === 'video' ? 'videos' : 
+                         fileType === 'audio' ? 'audio' : 'documents';
+        formData.append(fieldName, files[i]);
       }
     }
     
@@ -176,7 +207,7 @@ export const casesAPI = {
     return response.data;
   },
 
-  // Add documents to existing case (KEEP ONLY THIS ONE)
+  // Add documents to existing case
   addDocuments: async (caseId: string, formData: FormData): Promise<CaseResponse> => {
     const response = await apiClient.post(`/cases/${caseId}/documents`, formData, {
       headers: {

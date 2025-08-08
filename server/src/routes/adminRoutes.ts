@@ -5,7 +5,7 @@ import {
   getAllCasesAdmin,
   adminUpdateCaseStatus,
   getAllUsersAdmin
-} from '../controllers/adminController';
+} from '../controllers/adminController';  // Import from adminController.ts
 import { authenticate, authorize } from '../middleware/auth';
 
 const router = express.Router();
@@ -18,8 +18,8 @@ router.use(authorize('admin'));
 router.get('/dashboard/stats', getAdminDashboardStats);
 
 // Case management
-router.get('/cases', getAllCasesAdmin);
-router.put('/cases/:caseId/status', adminUpdateCaseStatus);
+router.get('/cases', getAllCasesAdmin);  // Get all cases for admin
+router.put('/cases/:caseId/status', adminUpdateCaseStatus);  // Update case status
 
 // User management
 router.get('/users', getAllUsersAdmin);

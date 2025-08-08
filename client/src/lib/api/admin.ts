@@ -38,16 +38,18 @@ export interface AdminCase {
   updatedAt: string;
 }
 
+export type Role = 'user' | 'admin' | 'panel_member';
 export interface AdminUser {
   _id: string;
   name: string;
   email: string;
   phone: string;
-  role: string;
+  role: Role;                 
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
   createdAt: string;
 }
+
 
 export interface PaginationInfo {
   currentPage: number;
@@ -61,7 +63,7 @@ export interface PaginationInfo {
 export const adminAPI = {
   // Get dashboard statistics
   getDashboardStats: async (): Promise<{ status: string; data: AdminDashboardStats }> => {
-    const response = await apiClient.get('/admin/dashboard/stats');  // No `/api` here since it's included in the baseURL
+    const response = await apiClient.get('/admin/dashboard/stats');
     return response.data;
   },
 
@@ -83,7 +85,7 @@ export const adminAPI = {
     caseId: string,
     data: { status: string; notes?: string; adminAction?: string }
   ): Promise<{ status: string; data: { case: AdminCase }; message: string }> => {
-    const response = await apiClient.put(`/admin/cases/${caseId}/status`, data);  // No `/api` here
+    const response = await apiClient.put(`/admin/cases/${caseId}/status`, data);
     return response.data;
   },
 
@@ -94,7 +96,19 @@ export const adminAPI = {
     limit?: number;
     search?: string;
   }): Promise<{ status: string; data: { users: AdminUser[]; pagination: PaginationInfo } }> => {
-    const response = await apiClient.get('/admin/users', { params });  // No `/api` here
+    const response = await apiClient.get('/admin/users', { params });
     return response.data;
-  }
+  },
+
+  // Update user details
+  updateUser: async (userId: string, data: any) => {
+    const response = await apiClient.put(`/admin/users/${userId}`, data);
+    return response.data;
+  },
+
+  // Delete user
+  deleteUser: async (userId: string) => {
+    const response = await apiClient.delete(`/admin/users/${userId}`);
+    return response.data;
+  },
 };

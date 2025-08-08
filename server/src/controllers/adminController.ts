@@ -248,3 +248,96 @@ export const getAllUsersAdmin = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+// PUT /admin/users/:userId
+export const updateUserAdmin = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const {
+      name,
+      email,
+      role,
+      isEmailVerified,
+      isPhoneVerified,
+    } = req.body as {
+      name?: string;
+      email?: string;
+      role?: 'user' | 'admin' | 'panel_member';
+      isEmailVerified?: boolean;
+      isPhoneVerified?: boolean;
+    };
+
+    const allowedRoles = ['user', 'admin', 'panel_member'] as const;
+    if (role && !allowedRoles.includes(role)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid role. Allowed: user, admin, panel_member',
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ status: 'error', message: 'User not found' });
+    }
+
+    if (typeof name === 'string') user.name = name.trim();
+
+    if (typeof email === 'string' && email.toLowerCase() !== user.email) {
+      const exists = await User.findOne({ email: email.toLowerCase(), _id: { $ne: userId } });
+      if (exists) {
+        return res.status(409).json({ status: 'error', message: 'Email already in use' });
+      }
+      user.email = email.toLowerCase();
+      // Optional: re-verify if email changed
+      user.isEmailVerified = false;
+    }
+
+    if (role) user.role = role;
+    if (typeof isEmailVerified === 'boolean') user.isEmailVerified = isEmailVerified;
+    if (typeof isPhoneVerified === 'boolean') user.isPhoneVerified = isPhoneVerified;
+
+    await user.save();
+
+    const safeUser = await User.findById(userId).select(
+      '-password -resetPasswordToken -resetPasswordExpires -emailVerificationToken -phoneVerificationToken'
+    );
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'User updated successfully',
+      data: { user: safeUser },
+    });
+  } catch (err: any) {
+    console.error('Admin update user error:', err);
+    return res.status(500).json({ status: 'error', message: 'Failed to update user', error: err.message });
+  }
+};
+
+// DELETE /admin/users/:userId
+export const deleteUserAdmin = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    // Prevent self-delete (optional but nice to have)
+    if (req.user && req.user._id?.toString() === userId) {
+      return res.status(400).json({
+        status: 'error',
+        message: "You can't delete your own account.",
+      });
+    }
+
+    const deleted = await User.findByIdAndDelete(userId);
+    if (!deleted) {
+      return res.status(404).json({ status: 'error', message: 'User not found' });
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'User deleted successfully',
+    });
+  } catch (err: any) {
+    console.error('Admin delete user error:', err);
+    return res.status(500).json({ status: 'error', message: 'Failed to delete user', error: err.message });
+  }
+};

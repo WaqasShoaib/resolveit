@@ -4,7 +4,9 @@ import {
   getAdminDashboardStats,
   getAllCasesAdmin,
   adminUpdateCaseStatus,
-  getAllUsersAdmin
+  getAllUsersAdmin,
+  updateUserAdmin,     
+  deleteUserAdmin,
 } from '../controllers/adminController';  // Import from adminController.ts
 import { authenticate, authorize } from '../middleware/auth';
 
@@ -24,4 +26,6 @@ router.put('/cases/:caseId/status', adminUpdateCaseStatus);  // Update case stat
 // User management
 router.get('/users', getAllUsersAdmin);
 
+router.put('/users/:userId', updateUserAdmin);   // <- add
+router.delete('/users/:userId', deleteUserAdmin);
 export default router;

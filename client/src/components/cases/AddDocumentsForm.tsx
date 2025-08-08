@@ -63,7 +63,10 @@ const AddDocumentsForm: React.FC = () => {
       const case_data = response.data.case;
       
       // Check if user is authorized
-      if (user?.id !== case_data.complainant._id) {
+      const userIdStr = user?.id?.toString() || (user as any)?._id?.toString();
+      const complainantIdStr = case_data.complainant._id?.toString();
+
+      if (!userIdStr || userIdStr !== complainantIdStr) {
         setError('You are not authorized to add documents to this case.');
         return;
       }

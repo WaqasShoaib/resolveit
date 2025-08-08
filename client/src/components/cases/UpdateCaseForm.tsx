@@ -87,6 +87,9 @@ const UpdateCaseForm: React.FC = () => {
     }
   }, [caseId]);
 
+
+  // Replace your fetchCaseDetails function with this debug version:
+
   const fetchCaseDetails = async () => {
     try {
       setIsLoading(true);
@@ -94,15 +97,41 @@ const UpdateCaseForm: React.FC = () => {
       const response = await casesAPI.getCaseById(caseId);
       const case_data = response.data.case;
       
+      // DEBUG: Log the complete user object to see its structure
+      console.log('🔍 COMPLETE USER DEBUG:');
+      console.log('Full user object:', user);
+      console.log('User keys:', user ? Object.keys(user) : 'user is null/undefined');
+      console.log('User.id:', user?.id);
+      console.log('User._id:', (user as any)?._id);
+      console.log('Case complainant._id:', case_data.complainant._id);
+      
+      // Try both _id and id properties for user
+      const userIdFromId = user?.id?.toString();
+      const userIdFrom_Id = (user as any)?._id?.toString();
+      const complainantIdStr = case_data.complainant._id?.toString();
+      
+      console.log('Comparison attempts:');
+      console.log('  user.id vs complainant._id:', userIdFromId, '===', complainantIdStr, '→', userIdFromId === complainantIdStr);
+      console.log('  user._id vs complainant._id:', userIdFrom_Id, '===', complainantIdStr, '→', userIdFrom_Id === complainantIdStr);
+      
+      // Use whichever user ID property exists
+      const userIdStr = userIdFromId || userIdFrom_Id;
+      
+      console.log('Final userIdStr:', userIdStr);
+      console.log('Authorization check:', userIdStr === complainantIdStr);
+      
       // Check if user is authorized to edit this case
-      if (user?.id !== case_data.complainant._id) {
+      if (!userIdStr || userIdStr !== complainantIdStr) {
+        console.log('❌ Authorization failed:', { userIdStr, complainantIdStr });
         setError('You are not authorized to edit this case.');
         return;
       }
 
+      console.log('✅ Frontend authorization passed!');
+
       setCaseData(case_data);
       
-      // Populate form with existing data
+      // Rest of your code...
       setFormData({
         title: case_data.title,
         description: case_data.description,

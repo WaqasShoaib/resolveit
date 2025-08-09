@@ -39,16 +39,18 @@ export interface AdminCase {
 }
 
 export type Role = 'user' | 'admin' | 'panel_member';
+// /lib/api/admin.ts
 export interface AdminUser {
-  _id: string;
+  _id: string | undefined;  // Allow _id to be optional (string or undefined)
   name: string;
   email: string;
-  phone: string;
-  role: Role;                 
+  phone?: string;
+  role: Role;
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
   createdAt: string;
 }
+
 
 
 export interface PaginationInfo {

@@ -2,15 +2,7 @@
 'use client';
 
 import React from 'react';
-import { 
-  FileText, 
-  Users, 
-  Clock, 
-  CheckCircle, 
-  TrendingUp,
-  AlertTriangle,
-  Calendar
-} from 'lucide-react';
+import { FileText, Users, Clock, CheckCircle, TrendingUp, AlertTriangle, Calendar } from 'lucide-react';
 import { AdminDashboardStats } from '@/lib/api/admin';
 
 interface StatsCardsProps {

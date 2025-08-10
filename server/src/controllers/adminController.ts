@@ -1,6 +1,33 @@
 // /server/src/controllers/adminController.ts
 import { Request, Response } from 'express';
 import { Case, User } from '../models';
+import { Server as SocketIOServer } from 'socket.io';
+
+type CaseStatus =
+  | 'registered'
+  | 'under_review'
+  | 'awaiting_response'
+  | 'accepted'
+  | 'witness_nomination'
+  | 'panel_formation'
+  | 'mediation_in_progress'
+  | 'resolved'
+  | 'unresolved'
+  | 'cancelled';
+
+const CASE_STATUSES = [
+  'registered',
+  'under_review',
+  'awaiting_response',
+  'accepted',
+  'witness_nomination',
+  'panel_formation',
+  'mediation_in_progress',
+  'resolved',
+  'unresolved',
+  'cancelled',
+] as const;
+
 
 // Get admin dashboard statistics
 export const getAdminDashboardStats = async (req: Request, res: Response) => {
@@ -146,46 +173,94 @@ export const getAllCasesAdmin = async (req: Request, res: Response) => {
 };
 
 // Admin update case status (with more permissions than regular users)
+// Admin update case status (with more permissions than regular users)
 export const adminUpdateCaseStatus = async (req: Request, res: Response) => {
   try {
     const { caseId } = req.params;
-    const { status, notes, adminAction } = req.body;
 
-    const caseDoc = await Case.findById(caseId)
-      .populate('complainant', 'name email phone');
+    // Make the incoming status a proper union type
+    const { status, notes, adminAction } = req.body as {
+      status: CaseStatus;
+      notes?: string;
+      adminAction?: string;
+    };
+
+    // Early guard: invalid status value
+    if (!CASE_STATUSES.includes(status)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Invalid status value "${status}".`,
+      });
+    }
+
+    const caseDoc = await Case.findById(caseId).populate('complainant', 'name email phone');
 
     if (!caseDoc) {
       return res.status(404).json({
         status: 'error',
-        message: 'Case not found'
+        message: 'Case not found',
       });
     }
 
-    // Admin can update any case status
+    // Enforce lifecycle (same as FE)
+    const validTransitions: Record<CaseStatus, CaseStatus[]> = {
+    registered: ['under_review', 'awaiting_response'],
+    under_review: ['awaiting_response', 'accepted'],
+    awaiting_response: ['accepted', 'witness_nomination'],
+    accepted: ['panel_formation'],
+    witness_nomination: ['panel_formation'],               // ✅ add this
+    panel_formation: ['mediation_in_progress'],
+    mediation_in_progress: ['resolved', 'unresolved'],
+    resolved: [],
+    unresolved: [],
+    cancelled: [],
+  };
+
+    const current = caseDoc.status as CaseStatus;
+
+    if (!validTransitions[current]?.includes(status)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Invalid status transition from "${current}" to "${status}".`,
+      });
+    }
+
+    // Update
     caseDoc.status = status;
     if (notes) caseDoc.notes = notes;
 
-    // Log admin action (you can expand this to create an audit trail)
+    // Optional: audit
     if (adminAction) {
-      // Here you could log to an audit table
-      console.log(`Admin action: ${adminAction} on case ${caseDoc.caseNumber} by ${req.user._id}`);
+      console.log(
+        `Admin action: ${adminAction} on case ${caseDoc.caseNumber} by ${req.user?._id}`
+      );
     }
 
     await caseDoc.save();
 
-    res.status(200).json({
+    // Realtime notify (use .id which is a string; avoids _id: unknown)
+    try {
+      const io = req.app.get('io') as SocketIOServer | undefined;
+      io?.emit('caseStatusUpdated', {
+        _id: caseDoc.id,
+        status: caseDoc.status as CaseStatus,
+      });
+    } catch (emitErr) {
+      console.warn('Socket emit failed (non-fatal):', emitErr);
+    }
+
+    return res.status(200).json({
       status: 'success',
       message: 'Case status updated successfully',
-      data: {
-        case: caseDoc
-      }
+      data: { case: caseDoc },
     });
-  } catch (error: any) {
-    console.error('Admin update case status error:', error);
-    res.status(500).json({
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Admin update case status error:', msg);
+    return res.status(500).json({
       status: 'error',
       message: 'Failed to update case status',
-      error: error.message
+      error: msg,
     });
   }
 };

@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { adminAPI } from '@/lib/api/admin';
-import { Select, Input, Button, Row, Col, Table, Modal, notification, Progress } from 'antd';
+import { Select, Input, Button, Row, Col, Table, Modal, notification, Progress, Tooltip } from 'antd';
 import { Edit } from 'lucide-react';
 
 const { Option } = Select;
@@ -13,6 +13,7 @@ interface Case {
   caseNumber: string;
   caseType: string;
   status: string;
+  oppositeParty?: { name?: string; email?: string; phone?: string }; // optional in list payload
 }
 
 const CaseManagement: React.FC = () => {
@@ -40,7 +41,7 @@ const CaseManagement: React.FC = () => {
     fetchCases(filters);
   }, [filters]);
 
-  // ✅ Polling loop: refresh list every 8s (meets “real-time via polling”)
+  // Polling loop: refresh list every 8s (meets “real-time via polling”)
   useEffect(() => {
     const id = setInterval(() => {
       fetchCases(filtersRef.current);
@@ -49,10 +50,10 @@ const CaseManagement: React.FC = () => {
   }, []);
 
   // Fetch cases with filters
-  const fetchCases = async (filters: any) => {
+  const fetchCases = async (params: any) => {
     setIsLoading(true);
     try {
-      const response = await adminAPI.getAllCases(filters);
+      const response = await adminAPI.getAllCases(params);
       setCases(response.data.cases);
     } catch (error) {
       notification.error({
@@ -64,22 +65,22 @@ const CaseManagement: React.FC = () => {
     }
   };
 
-  // Handle case status update
+  // ---- Status update flow ----
+  const validTransitions: { [key: string]: string[] } = {
+    registered: ['under_review', 'awaiting_response', 'cancelled'],
+    under_review: ['awaiting_response', 'accepted', 'cancelled'],
+    awaiting_response: ['accepted', 'witness_nomination', 'cancelled'],
+    accepted: ['panel_formation', 'cancelled'],
+    witness_nomination: ['panel_formation', 'cancelled'],
+    panel_formation: ['mediation_in_progress', 'cancelled'],
+    mediation_in_progress: ['resolved', 'unresolved', 'cancelled'],
+    resolved: [],
+    unresolved: [],
+    cancelled: [],
+  };
+
   const handleUpdateStatus = async () => {
     if (!selectedCase || !status) return;
-
-    const validTransitions: { [key: string]: string[] } = {
-      registered: ['under_review', 'awaiting_response'],
-      under_review: ['awaiting_response', 'accepted'],
-      awaiting_response: ['accepted', 'witness_nomination'],
-      accepted: ['panel_formation'],
-      witness_nomination: ['panel_formation'],
-      panel_formation: ['mediation_in_progress'],
-      mediation_in_progress: ['resolved', 'unresolved'],
-      resolved: [],
-      unresolved: [],
-      cancelled: [],
-    };
 
     const allowedStatuses = validTransitions[selectedCase.status] || [];
 
@@ -99,7 +100,7 @@ const CaseManagement: React.FC = () => {
       });
       // refresh immediately after update (don’t wait for next poll)
       fetchCases(filters);
-    } catch (error) {
+    } catch {
       notification.error({
         message: 'Error',
         description: 'Failed to update case status',
@@ -109,55 +110,76 @@ const CaseManagement: React.FC = () => {
     }
   };
 
-  // Open status update modal
   const openStatusModal = (record: Case) => {
     setSelectedCase(record);
     setStatus(record.status); // Set current status
     setStatusModalVisible(true);
   };
 
-  // Get the progress percentage for a case's current status
-  const getProgressPercentage = (status: string) => {
-    const statusOrder = [
+  const getProgressPercentage = (s: string) => {
+    const order = [
       'registered',
       'under_review',
       'awaiting_response',
       'accepted',
+      'witness_nomination',
       'panel_formation',
       'mediation_in_progress',
       'resolved',
       'unresolved',
     ];
-
-    const statusIndex = statusOrder.indexOf(status);
-    return ((statusIndex + 1) / statusOrder.length) * 100;
+    const idx = order.indexOf(s);
+    return ((idx + 1) / order.length) * 100;
   };
 
-  // Handle Filter Change
+  // ---- Notify Opposite Party ----
+  const canNotify = (r: Case) => {
+    const s = (r.status || '').toLowerCase();
+    return ['registered', 'under_review', 'awaiting_response'].includes(s);
+  };
+
+  // Only block when we KNOW both are missing; if not present in list payload, allow
+  const missingContact = (r: Case) => {
+    if (!r.oppositeParty) return false;
+    return !(r.oppositeParty.email || r.oppositeParty.phone);
+  };
+
+  const handleNotify = async (record: Case) => {
+    try {
+      await adminAPI.notifyOppositeParty(record._id);
+      notification.success({
+        message: 'Invitation sent',
+        description: 'Consent link was generated (see server logs).',
+      });
+      fetchCases(filters); // move to awaiting_response if applicable
+    } catch {
+      notification.error({ message: 'Failed', description: 'Could not send invitation' });
+    }
+  };
+
+  // Filters
   const handleFilterChange = (value: string, key: string) => {
-    setFilters((prevFilters) => {
-      const updatedFilters = { ...prevFilters, [key]: value, page: 1 }; // Reset to page 1 when filters change
-      fetchCases(updatedFilters); // Call API with updated filters
-      return updatedFilters;
+    setFilters((prev) => {
+      const updated = { ...prev, [key]: value, page: 1 };
+      fetchCases(updated);
+      return updated;
     });
   };
 
-  // Handle Search Change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const searchValue = e.target.value;
-    setFilters((prevFilters) => {
-      const updatedFilters = { ...prevFilters, search: searchValue, page: 1 };
-      fetchCases(updatedFilters); // Call API with updated search
-      return updatedFilters;
+    setFilters((prev) => {
+      const updated = { ...prev, search: searchValue, page: 1 };
+      fetchCases(updated);
+      return updated;
     });
   };
 
-  // Handle Pagination Change
   const handlePaginationChange = (page: number) => {
-    setFilters((prevFilters) => {
-      const updatedFilters = { ...prevFilters, page };
-      fetchCases(updatedFilters); // Fetch new page of cases
-      return updatedFilters;
+    setFilters((prev) => {
+      const updated = { ...prev, page };
+      fetchCases(updated);
+      return updated;
     });
   };
 
@@ -226,11 +248,32 @@ const CaseManagement: React.FC = () => {
           {
             title: 'Actions',
             key: 'actions',
-            render: (_: any, record: Case) => (
-              <Button onClick={() => openStatusModal(record)} icon={<Edit size={16} />} type="default">
-                Update Status
-              </Button>
-            ),
+            render: (_: any, record: Case) => {
+              const disabled = !canNotify(record) || missingContact(record);
+              const reason = !canNotify(record)
+                ? 'Allowed only from Registered / Under Review / Awaiting Response'
+                : 'Opposite party contact is missing';
+
+              return (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button onClick={() => openStatusModal(record)} icon={<Edit size={16} />} type="default">
+                    Update Status
+                  </Button>
+                  <Tooltip title={disabled ? reason : ''}>
+                    <Button
+                      type="primary"
+                      disabled={disabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNotify(record);
+                      }}
+                    >
+                      Notify Opposite Party
+                    </Button>
+                  </Tooltip>
+                </div>
+              );
+            },
           },
         ]}
         dataSource={cases}

@@ -2,6 +2,7 @@ import express from 'express';
 import authRoutes from './authRoutes';
 import caseRoutes from './caseRoutes';
 import adminRoutes from './adminRoutes'; // Add this import
+import publicRoutes from './publicRoutes';
 
 const router = express.Router();
 
@@ -9,6 +10,13 @@ const router = express.Router();
 router.use('/auth', authRoutes);
 router.use('/cases', caseRoutes);
 router.use('/admin', adminRoutes); // Add this line
+
+
+router.use('/admin', adminRoutes);
+router.use('/public', publicRoutes); // <-- add this
+
+
+
 
 // API Info route
 router.get('/', (req, res) => {

@@ -9,6 +9,8 @@ import {
   deleteUserAdmin,
 } from '../controllers/adminController';  // Import from adminController.ts
 import { authenticate, authorize } from '../middleware/auth';
+import { notifyOppositeParty } from '../controllers/caseController';
+
 
 const router = express.Router();
 
@@ -28,4 +30,10 @@ router.get('/users', getAllUsersAdmin);
 
 router.put('/users/:userId', updateUserAdmin);   // <- add
 router.delete('/users/:userId', deleteUserAdmin);
+
+
+// …
+router.post('/cases/:caseId/notify-opposite-party', notifyOppositeParty);
+
+
 export default router;

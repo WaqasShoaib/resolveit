@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 import { Case, ICase } from '../models';
 import path from 'path';
+import { signConsentToken, verifyConsentToken } from '../utils/token';
+import { sendOppositePartyInvite } from '../utils/notify';
+
+
 
 // Create new case
 export const createCase = async (req: Request, res: Response) => {
@@ -468,4 +472,145 @@ const getFileType = (mimetype: string): 'image' | 'video' | 'audio' | 'document'
   if (mimetype.startsWith('video/')) return 'video';
   if (mimetype.startsWith('audio/')) return 'audio';
   return 'document';
+};
+
+
+
+
+// POST /api/cases/:caseId/notify-opposite-party   (admin-only)
+export const notifyOppositeParty = async (req: Request, res: Response) => {
+  try {
+    const { caseId } = req.params;
+    const doc = await Case.findById(caseId);
+    if (!doc) return res.status(404).json({ status: 'error', message: 'Case not found' });
+
+    // must have contact
+    const contactEmail = (doc as any).oppositeParty?.email;
+    const contactPhone = (doc as any).oppositeParty?.phone;
+    if (!contactEmail && !contactPhone) {
+      return res.status(400).json({ status: 'error', message: 'Opposite party contact missing' });
+    }
+
+    // create token (7 days)
+    const token = signConsentToken(doc.id, 7);
+    doc.consent = {
+      token,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      respondedAt: null,
+      response: null,
+    };
+
+    // move to awaiting_response if not already there
+    if (doc.status === 'registered' || doc.status === 'under_review') {
+      doc.status = 'awaiting_response';
+    }
+
+    await doc.save();
+
+    const base = (process.env.CLIENT_PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    const url = `${base}/consent/${encodeURIComponent(token)}`;
+    await sendOppositePartyInvite({
+      email: contactEmail,
+      phone: contactPhone,
+      url,
+      caseNumber: (doc as any).caseNumber,
+      name: (doc as any).oppositeParty?.name,
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Invitation sent',
+      data: { status: doc.status, consent: { expiresAt: doc.consent?.expiresAt } },
+    });
+  } catch (err: any) {
+    console.error('notifyOppositeParty error:', err);
+    return res.status(500).json({ status: 'error', message: 'Failed to send invite', error: err.message });
+  }
+};
+
+// GET /api/public/consent/:token  (no auth)
+export const getConsentByToken = async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+    const v = verifyConsentToken(token);
+    if (!v.ok) return res.status(400).json({ status: 'error', message: `Invalid token (${v.reason})` });
+
+    const doc = await Case.findById(v.caseId).select('caseNumber caseType description oppositeParty consent status');
+    if (!doc || doc.consent?.token !== token) {
+      return res.status(404).json({ status: 'error', message: 'Consent not found' });
+    }
+    if (doc.consent?.expiresAt && doc.consent.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ status: 'error', message: 'Link expired' });
+    }
+    if (doc.consent?.respondedAt) {
+      return res.status(400).json({ status: 'error', message: 'Already responded' });
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        caseNumber: (doc as any).caseNumber,
+        caseType: (doc as any).caseType,
+        description: (doc as any).description,
+        oppositeParty: (doc as any).oppositeParty,
+        status: doc.status,
+      },
+    });
+  } catch (err: any) {
+    console.error('getConsentByToken error:', err);
+    return res.status(500).json({ status: 'error', message: 'Failed to load consent', error: err.message });
+  }
+};
+
+// POST /api/public/consent/:token { action: 'accept' | 'decline' }  (no auth)
+export const postConsentResponse = async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+    const { action } = req.body as { action: 'accept' | 'decline' };
+
+    if (!['accept', 'decline'].includes(action)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid action' });
+    }
+
+    const v = verifyConsentToken(token);
+    if (!v.ok) return res.status(400).json({ status: 'error', message: `Invalid token (${v.reason})` });
+
+    const doc = await Case.findById(v.caseId);
+    if (!doc || doc.consent?.token !== token) {
+      return res.status(404).json({ status: 'error', message: 'Consent not found' });
+    }
+    if (doc.consent?.expiresAt && doc.consent.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ status: 'error', message: 'Link expired' });
+    }
+    if (doc.consent?.respondedAt) {
+      return res.status(400).json({ status: 'error', message: 'Already responded' });
+    }
+
+    // record response + status
+    doc.consent = {
+      ...(doc.consent || { token: null, expiresAt: null }),
+      respondedAt: new Date(),
+      response: action === 'accept' ? 'accepted' : 'declined',
+      token: null, // one-time use
+    };
+
+    if (action === 'accept') {
+      // only move if we were awaiting_response
+      if (doc.status === 'awaiting_response') doc.status = 'accepted';
+    } else {
+      // decline → unresolved
+      if (doc.status !== 'resolved') doc.status = 'unresolved';
+    }
+
+    await doc.save();
+
+    return res.status(200).json({
+      status: 'success',
+      message: `Response recorded: ${action}`,
+      data: { status: doc.status },
+    });
+  } catch (err: any) {
+    console.error('postConsentResponse error:', err);
+    return res.status(500).json({ status: 'error', message: 'Failed to record response', error: err.message });
+  }
 };

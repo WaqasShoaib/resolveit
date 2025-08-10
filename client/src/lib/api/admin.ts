@@ -113,4 +113,11 @@ export const adminAPI = {
     const response = await apiClient.delete(`/admin/users/${userId}`);
     return response.data;
   },
+
+  // Notify opposite party for a case
+  notifyOppositeParty: async (caseId: string) => {
+    const res = await apiClient.post(`/admin/cases/${caseId}/notify-opposite-party`);
+    return res.data as { status: string; message: string; data?: any };
+  },
+
 };

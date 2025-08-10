@@ -87,6 +87,15 @@ export interface ICase extends Document {
   
   createdAt: Date;
   updatedAt: Date;
+
+  consent?: {
+    token: string | null;
+    expiresAt: Date | null;
+    respondedAt: Date | null;
+    response: 'accepted' | 'declined' | null;
+};
+
+
 }
 
 const caseSchema = new Schema<ICase>({
@@ -241,7 +250,15 @@ const caseSchema = new Schema<ICase>({
   notes: {
     type: String,
     maxlength: [1000, 'Notes cannot exceed 1000 characters']
-  }
+  },
+
+  consent: {
+    token: { type: String, default: null },
+    expiresAt: { type: Date, default: null },
+    respondedAt: { type: Date, default: null },
+    response: { type: String, enum: ['accepted', 'declined', null], default: null },
+  },
+
   
 }, {
   timestamps: true

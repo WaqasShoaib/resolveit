@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
-import { Case, ICase } from '../models';
-import path from 'path';
+import { Case, User, Panel } from '../models';
+import { Types } from 'mongoose';
+
 import { signConsentToken, verifyConsentToken } from '../utils/token';
 import { sendOppositePartyInvite } from '../utils/notify';
 
@@ -474,9 +475,6 @@ const getFileType = (mimetype: string): 'image' | 'video' | 'audio' | 'document'
   return 'document';
 };
 
-
-
-
 // POST /api/cases/:caseId/notify-opposite-party   (admin-only)
 export const notifyOppositeParty = async (req: Request, res: Response) => {
   try {
@@ -614,3 +612,164 @@ export const postConsentResponse = async (req: Request, res: Response) => {
     return res.status(500).json({ status: 'error', message: 'Failed to record response', error: err.message });
   }
 };
+
+
+type CaseStatus =
+  | 'registered' | 'under_review' | 'awaiting_response' | 'accepted'
+  | 'witness_nomination' | 'panel_formation' | 'mediation_in_progress'
+  | 'resolved' | 'unresolved' | 'cancelled';
+
+// POST /api/admin/cases/:id/witnesses
+export const addWitnesses = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as {
+      witnesses: Array<{ name: string; email?: string; phone?: string; relation?: string; side: 'complainant' | 'opposite' }>;
+    };
+
+    if (!body?.witnesses?.length) {
+      return res.status(400).json({ status: 'error', message: 'No witnesses provided' });
+    }
+
+    const doc = await Case.findById(id);
+    if (!doc) return res.status(404).json({ status: 'error', message: 'Case not found' });
+
+    // Only allow from accepted or witness_nomination
+    if (!['accepted', 'witness_nomination'].includes(doc.status as CaseStatus)) {
+      return res.status(400).json({ status: 'error', message: `Cannot add witnesses in status "${doc.status}"` });
+    }
+
+    doc.witnesses = [...(doc.witnesses || []), ...body.witnesses.map(w => ({ ...w }))];
+
+    // Move to witness_nomination if coming from accepted
+    if (doc.status === 'accepted') {
+      doc.status = 'witness_nomination';
+    }
+
+    await doc.save();
+    return res.status(200).json({ status: 'success', data: { witnesses: doc.witnesses, status: doc.status } });
+  } catch (err: any) {
+    console.error('addWitnesses error:', err);
+    return res.status(500).json({ status: 'error', message: 'Failed to add witnesses', error: err.message });
+  }
+};
+
+// DELETE /api/admin/cases/:id/witnesses/:wid
+export const removeWitness = async (req: Request, res: Response) => {
+  try {
+    const { id, wid } = req.params;
+    const doc = await Case.findById(id);
+    if (!doc) return res.status(404).json({ status: 'error', message: 'Case not found' });
+
+    if (!doc.witnesses?.length) {
+      return res.status(404).json({ status: 'error', message: 'No witnesses found' });
+    }
+
+    const before = doc.witnesses.length;
+    doc.witnesses = doc.witnesses.filter((w: any) => w._id?.toString() !== wid);
+    if (doc.witnesses.length === before) {
+      return res.status(404).json({ status: 'error', message: 'Witness not found' });
+    }
+
+    await doc.save();
+    return res.status(200).json({ status: 'success', data: { witnesses: doc.witnesses } });
+  } catch (err: any) {
+    console.error('removeWitness error:', err);
+    return res.status(500).json({ status: 'error', message: 'Failed to remove witness', error: err.message });
+  }
+};
+
+// POST /api/admin/cases/:id/panel
+export const createPanel = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as {
+      members: Array<{ user: string; role: string }>;
+    };
+
+    if (!body?.members || body.members.length !== 3) {
+      return res.status(400).json({ status: 'error', message: 'Provide exactly 3 members (lawyer, scholar, community)' });
+    }
+
+    const allowedRoles = ['lawyer', 'scholar', 'community'] as const;
+    type PanelRole = (typeof allowedRoles)[number];
+
+    // normalize roles and verify presence of all three
+    const normalized = body.members.map(m => ({ user: m.user, role: (m.role || '').toLowerCase().trim() }));
+    const hasAll = allowedRoles.every(r => normalized.some(m => m.role === r));
+    if (!hasAll) {
+      return res.status(400).json({ status: 'error', message: 'Panel must include roles: lawyer, scholar, community' });
+    }
+
+    const doc = await Case.findById(id);
+    if (!doc) return res.status(404).json({ status: 'error', message: 'Case not found' });
+
+    if (!['witness_nomination', 'panel_formation'].includes(doc.status as any)) {
+      return res.status(400).json({ status: 'error', message: `Cannot create panel in status "${doc.status}"` });
+    }
+
+    if (doc.panelId) {
+      return res.status(409).json({ status: 'error', message: 'Panel already exists for this case' });
+    }
+
+    // verify users exist and are panel_member
+    const userIds = normalized.map(m => m.user);
+    const users = await User.find({ _id: { $in: userIds }, role: 'panel_member' }).select('_id role');
+    if (users.length !== 3) {
+      return res.status(400).json({ status: 'error', message: 'All members must be valid users with role panel_member' });
+    }
+
+    const members = normalized.map(m => {
+      if (!allowedRoles.includes(m.role as PanelRole)) {
+        throw new Error(`Invalid role: ${m.role}`);
+      }
+      return { user: new Types.ObjectId(m.user), role: m.role as PanelRole };
+    });
+
+    const newPanel = await Panel.create({
+      case: doc._id,
+      members,
+      status: 'created',
+    });
+
+    // 👇 cast _id to satisfy TS where Panel._id is typed as unknown
+    doc.panelId = newPanel._id as unknown as Types.ObjectId;
+    doc.status = 'panel_formation' as any;
+    await doc.save();
+
+    return res.status(201).json({ status: 'success', data: { panel: newPanel, caseStatus: doc.status } });
+  } catch (err: any) {
+    console.error('createPanel error:', err);
+    return res.status(500).json({ status: 'error', message: 'Failed to create panel', error: err.message });
+  }
+};
+
+
+// PUT /api/admin/panels/:panelId/activate
+export const activatePanel = async (req: Request, res: Response) => {
+  try {
+    const { panelId } = req.params;
+    const panel = await Panel.findById(panelId);
+    if (!panel) return res.status(404).json({ status: 'error', message: 'Panel not found' });
+
+    const doc = await Case.findById(panel.case);
+    if (!doc) return res.status(404).json({ status: 'error', message: 'Case not found' });
+
+    panel.status = 'active';
+    await panel.save();
+
+    // Move case forward
+    if (doc.status === 'panel_formation') {
+      doc.status = 'mediation_in_progress';
+      await doc.save();
+    }
+
+    return res.status(200).json({ status: 'success', data: { panel, caseStatus: doc.status } });
+  } catch (err: any) {
+    console.error('activatePanel error:', err);
+    return res.status(500).json({ status: 'error', message: 'Failed to activate panel', error: err.message });
+  }
+};
+
+
+

@@ -38,6 +38,19 @@ export interface AdminCase {
   updatedAt: string;
 }
 
+export interface WitnessInput {
+  name: string;
+  email?: string;
+  phone?: string;
+  relation?: string;
+  side: 'complainant' | 'opposite';
+}
+
+export interface PanelMemberInput {
+  userId: string;
+  role: 'lawyer' | 'scholar' | 'community';
+}
+
 export type Role = 'user' | 'admin' | 'panel_member';
 // /lib/api/admin.ts
 export interface AdminUser {
@@ -119,5 +132,42 @@ export const adminAPI = {
     const res = await apiClient.post(`/admin/cases/${caseId}/notify-opposite-party`);
     return res.data as { status: string; message: string; data?: any };
   },
+
+  addWitnesses: async (caseId: string, witnesses: WitnessInput[]) => {
+    const res = await apiClient.post(`/admin/cases/${caseId}/witnesses`, { witnesses });
+    return res.data;
+  },
+
+  removeWitness: async (caseId: string, witnessId: string) => {
+    const res = await apiClient.delete(`/admin/cases/${caseId}/witnesses/${witnessId}`);
+    return res.data;
+  },
+
+// Add (or fix) this method
+  createPanel: async (
+    caseId: string,
+    members: Array<{ userId: string; role: 'lawyer' | 'scholar' | 'community' }>
+  ) => {
+    const url = `/admin/cases/${caseId}/panel`;
+    console.log('[API] POST', url, members);   // <-- temp log
+    const response = await apiClient.post(url, { members });
+    return response.data;
+  },
+
+
+  activatePanel: async (panelId: string) => {
+    const res = await apiClient.put(`/admin/panels/${panelId}/activate`);
+    return res.data;
+  },
+
+  // reuse getAllUsers to fetch candidates
+  getPanelCandidates: async (opts?: { page?: number; search?: string }) => {
+    const res = await apiClient.get('/admin/users', {
+      params: { role: 'panel_member', page: opts?.page ?? 1, search: opts?.search ?? '' },
+    });
+    return res.data;
+  },
+
+  
 
 };

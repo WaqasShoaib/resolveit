@@ -1,11 +1,9 @@
-import User from './User';
-import Case from './Case';
+// server/src/models/index.ts
+export { default as Case } from './Case';
+export type { ICase } from './Case';
 
-export {
-  User,
-  Case
-};
+export { default as User } from './User';
+export type { IUser } from './User';
 
-export * from './User';
-export * from './Case';
-
+export { default as Panel } from './Panel';
+export type { IPanel } from './Panel';
